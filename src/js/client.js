@@ -1,65 +1,170 @@
-import { createStore,
-		combineReducers,
-		applyMiddleware
-} from 'redux';
+import {applyMiddleware, createStore, combineReducers} from 'redux';
 
-import logger from 'redux-logger';
-import thunk from 'redux-thunk';
+import logger from 'redux-logger'
+import thunk from 'redux-thunk'
+import promise from 'redux-promise-middleware'
 
-const userReducer = (state = {name: 'bla',  age: 0}, action) => {
+import React from 'react'
+import ReactDOM from 'react-dom'
+
+import { Provider, connect } from 'react-redux'
+
+import axios from 'axios'
+
+//reducers.js
+
+const tweets = (state={
+	tweets: [],
+	fetching: false,
+	fetched: false,
+	error: null
+}, action) => {
 	switch(action.type) {
-		case 'CHANGE_NAME': {
-			state = {...state, name: action.payload};
-			break;
+		case 'FETCH_TWEETS': {
+			return {...state, fetching: true}
 		}
-		case 'CHANGE_AGE': {
-			state = {...state, age: action.payload};
-			break;
+		case 'FETCH_TWEETS_REJECTED': {
+			return {
+				...state,
+				fetching: false,
+				error: action.payload
+			}
 		}
-		case 'E': {
-			throw new Error('AHHHH!');
-			break;
+		case 'FETCH_TWEETS_FULFILLED': {
+			return {
+				...state,
+				fetching: false,
+				fetched: true,
+				tweets: action.payload
+			}
 		}
 	}
+
 	return state;
-};
-
-const tweetsReducer = (state = [], action) => {
-	return state;
-};
-
-const reducers = combineReducers({
-	user: userReducer,
-	tweetsReducer: tweetsReducer
-});
-
-const actionLogger = (store) => (next) => (action) => {
-	console.log('action fired', action);
-	next(action);
 }
 
-const error = (store) => (next) => (action) => {
-	try {
-		next(action);
-	} catch(e) {
-		console.log('AHHHHH!!!!', e);
+const user = (state={
+	user: {
+		id: null,
+		name: null,
+		age: null
+	},
+	fetching: false,
+	fetched: false,
+	error: null
+}, action) => {
+	switch(action.type) {
+		case 'FETCH_USERS': {
+			return {...state, fetching: true}
+		}
+		case 'FETCH_USERS_REJECTED': {
+			return {
+				...state,
+				fetching: false,
+				error: action.payload
+			}
+		}
+		case 'FETCH_USERS_FULFILLED': {
+			return {
+				...state,
+				fetching: false,
+				fetched: true,
+				user: action.payload
+			}
+		}
+	}
+
+	return state;
+}
+
+const reducer = combineReducers({
+	tweets,
+	user
+})
+
+//store.js
+
+const middleware = applyMiddleware(promise(), thunk, logger())
+
+const store = createStore(reducer, middleware);
+
+//actions.js
+
+const fetchUser = () => {
+	return {
+		type: 'FETCH_USERS_FULFILLED',
+		payload: {
+			name: 'Eduardo',
+			age: 28
+		}
 	}
 }
 
-const middleware = applyMiddleware(logger(), thunk);
+const fetchTweets = () => {
+	return (dispatch) => {
+		axios.get('/data/tweets.json')
+			.then((response) => {
+				dispatch({
+					type: 'FETCH_TWEETS_FULFILLED',
+					payload: response.data
+				})
+			})
+			.catch((err) => {
+				dispatch({
+					type: 'FETCH_TWEETS_REJECTED',
+					payload: response.err
+				})
+			})
+	}
+}
 
-const store = createStore(reducers, middleware);
+//layout.js
 
-// store.subscribe(() => {
-// 	console.log('store changed', store.getState());
-// });
+@connect((store) => {
+	return {
+		user: store.user.user,
+		userFetched: store.user.fetched,
+		tweets: store.tweets.tweets
+	}
+})
 
-store.dispatch({type: 'CHANGE_NAME', payload: 'Eduardo'});
-store.dispatch({type: 'CHANGE_AGE', payload: 28});
+class Layout extends React.Component {
+	componentWillMount() {
+		this.props.dispatch(fetchUser())
+	}
 
-store.dispatch((dispatch) => {
-	dispatch({});
-	//do something async
-	dispatch({});
-});
-// store.dispatch({type: 'E'});
+	fetchTweets() {
+		this.props.dispatch(fetchTweets())
+	}
+
+	render() {
+		const { user, tweets } = this.props;
+
+		if (!tweets.length) {
+			return <button
+				onClick={this.fetchTweets.bind(this)}
+				>
+				Load tweets
+			</button>
+		}
+
+		const mappedTweets = tweets.map((tweet, index) => <li key={index}>{tweet.text}</li>)
+		return (
+			<div>
+				<h1>{user.name}</h1>
+				<ul>{mappedTweets}</ul>
+			</div>
+		);
+	}
+}
+
+//client.js
+
+const app = document.getElementById('app')
+
+ReactDOM.render(<Provider store={store}>
+	<Layout />
+</Provider>, app);
+
+
+
